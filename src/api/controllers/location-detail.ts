@@ -46,6 +46,9 @@ const findAll = async (req: Request, res: Response, next: NextFunction) => {
         const locationDetailServiceInstance = Container.get(LocationDetailService)
         const locationDetails = await locationDetailServiceInstance.find({})
         console.log(locationDetails)
+        for(let ld of locationDetails) {
+            ld.ld__chr05 = ld.item.pt_desc1
+        }
         return res
             .status(200)
             .json({ message: "fetched succesfully", data: locationDetails })

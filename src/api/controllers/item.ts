@@ -72,6 +72,7 @@ const findAll = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const itemServiceInstance = Container.get(ItemService)
         const codes = await itemServiceInstance.find({})
+        //console.log(codes)
         return res
             .status(200)
             .json({ message: "fetched succesfully", data: codes })

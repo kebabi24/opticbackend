@@ -46,6 +46,9 @@ const findAll = async (req: Request, res: Response, next: NextFunction) => {
         const locationAccessoireServiceInstance = Container.get(LocationAccessoireService)
         const locationAccessoires = await locationAccessoireServiceInstance.find({})
         //console.log(locationAccessoires)
+        for(let lda of locationAccessoires) {
+            lda.lda__chr05 = lda.accessoire.acs_desc1
+        }
         return res
             .status(200)
             .json({ message: "fetched succesfully", data: locationAccessoires })

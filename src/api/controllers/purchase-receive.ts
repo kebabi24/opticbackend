@@ -222,16 +222,32 @@ const createGls = async (req: Request, res: Response, next: NextFunction) => {
         created_by:user_code,created_ip_adr: req.headers.origin,
         last_modified_by:user_code,last_modified_ip_adr: req.headers.origin
         });
-        const lds = await locationGlassesServiceInstance.find({ldg_part: remain.prh_part, ldg_site: req.body.pr.prh_site})
-        const {sct_mtl_tl} = await costSimulationServiceInstance.findOne({ sct_part: remain.prh_part,sct_site: req.body.pr.prh_site, sct_sim: 'STDCG' });
-        const sctdet = await costSimulationServiceInstance.findOne({ sct_part: remain.prh_part, sct_site: req.body.pr.prh_site,  sct_sim: 'STDCG' });
+        const lds = await locationGlassesServiceInstance.find({ldg_part: remain.prh_part, ldg_site: req.body.pr.prh_site,ldg_sph:remain.prh_sph,ldg_cyl:remain.prh_cyl,ldg_add: remain.prh_add})
+        const sct_mtl = await costSimulationServiceInstance.findOne({ sct_part: remain.prh_part,sct_site: req.body.pr.prh_site, sct_sim: 'STDCG' ,dec01: remain.prh_sph,dec02: remain.prh_cyl, dec03:remain.prh_add});
+     //  console.log("sct_mtl_tl",sct_mtl)
+      let sct_mtl_tl = 0
+       if(sct_mtl) {
+         sct_mtl_tl = sct_mtl.sct_mtl_tl
+      }
+      else {
+         sct_mtl_tl = 0
+      }
+       const sctdet = await costSimulationServiceInstance.findOne({ sct_part: remain.prh_part, sct_site: req.body.pr.prh_site,  sct_sim: 'STDCG' ,dec01: remain.prh_sph,dec02: remain.prh_cyl, dec03:remain.prh_add});
         let qty = 0
         lds.map(elem=>{
           qty += Number(elem.ldg_qty_oh)
         })
+        if(sctdet) {
         const new_price =  round(( (qty*Number(sct_mtl_tl)) + (Number(remain.prh_rcvd) * Number(remain.prh_um_conv) * Number(remain.prh_pur_cost) * Number( req.body.pr.prh_ex_rate2) / Number( req.body.pr.prh_ex_rate)) ) / (qty+ (Number(remain.prh_rcvd) * Number(remain.prh_um_conv))),2)
-       await costSimulationServiceInstance.update({sct_mtl_tl: new_price , sct_cst_tot: new_price +  Number(sctdet.sct_lbr_tl) + Number(sctdet.sct_bdn_tl) + Number(sctdet.sct_ovh_tl) + Number(sctdet.sct_sub_tl), created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{ sct_part: remain.prh_part, sct_site: req.body.pr.prh_site, sct_sim: 'STDCG' })
+       await costSimulationServiceInstance.update({sct_mtl_tl: new_price , sct_cst_tot: new_price +  Number(sctdet.sct_lbr_tl) + Number(sctdet.sct_bdn_tl) + Number(sctdet.sct_ovh_tl) + Number(sctdet.sct_sub_tl), created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{ sct_part: remain.prh_part, sct_site: req.body.pr.prh_site, sct_sim: 'STDCG',dec01: remain.prh_sph,dec02: remain.prh_cyl, dec03:remain.prh_add })
       // console.log(tr_status)
+        }
+        else {
+          await costSimulationServiceInstance.create({
+            sct_part: remain.prh_part,sct_site: req.body.pr.prh_site, sct_sim: 'STDCG' ,dec01: remain.prh_sph,dec02: remain.prh_cyl, dec03:remain.prh_add,
+            sct_mtl_tl: remain.prh_pur_cost , sct_cst_tot: remain.prh_pur_cost , created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+       
+        }
         const status =   await statusServiceInstance.findOne({
           is_status: tr_status
          })

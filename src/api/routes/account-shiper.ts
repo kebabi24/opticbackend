@@ -11,6 +11,8 @@ export default (app: Router) => {
     route.post("/P", controller.createP)
     route.get("/:id", controller.findOne)
     route.post("/find", controller.findBy)
+    route.post("/findwithadress", controller.findBywithadress)
+    route.post("/findwithadressp", controller.findBywithadressP)
     route.put("/:id", controller.update)
     route.delete("/:id", controller.deleteOne)
 }

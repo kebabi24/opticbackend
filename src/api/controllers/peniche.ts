@@ -1,4 +1,7 @@
 import PenicheService from "../../services/peniche"
+import CustomerService from "../../services/customer"
+import SaleOrderService from "../../services/saleorder"
+import AddressService from "../../services/address"
 import { Router, Request, Response, NextFunction } from "express"
 import { Container } from "typedi"
 
@@ -41,7 +44,20 @@ const findAll = async (req: Request, res: Response, next: NextFunction) => {
     logger.debug("Calling find all peniche endpoint")
     try {
         const penicheServiceInstance = Container.get(PenicheService)
+        const customerServiceInstance = Container.get(CustomerService)
+        const saleOrderServiceInstance = Container.get(SaleOrderService)
+        const addressServiceInstance = Container.get(AddressService)
         const peniches = await penicheServiceInstance.find({})
+        for(let pen of peniches) {
+            if (pen.pen_nbr != null) {
+                const so = await saleOrderServiceInstance.findOne({so_nbr : pen.pen_nbr})
+                console.log(so.customer.cm_addr)
+                const address = await addressServiceInstance.findOne({ad_addr :so.customer.cm_addr })
+                pen.pen_phys_addr = address.ad_name
+                pen.pen_user1 = so.customer.cm_addr
+            }
+        }
+      //  console.log(peniches)
         return res
             .status(200)
             .json({ message: "fetched succesfully", data: peniches })
@@ -94,7 +110,7 @@ const findByAll = async (req: Request, res: Response, next: NextFunction) => {
         })
         return res.status(202).json({
             message: "sec",
-            data:  requisitions ,
+            data:  peniches ,
         })
     } catch (e) {
         logger.error("🔥 error: %o", e)

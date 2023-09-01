@@ -46,7 +46,19 @@ export default class VisiteService {
             throw e
         }
     }
-
+    public async count(query: any): Promise<any> {
+        try {
+            const visite = await this.visiteModel.count({
+                where: query,
+                
+            })
+            this.logger.silly("find All saleorder mstr")
+            return visite
+        } catch (e) {
+            this.logger.error(e)
+            throw e
+        }
+    }
     public async update(data: any, query: any): Promise<any> {
         try {
             const visite = await this.visiteModel.update(data, {

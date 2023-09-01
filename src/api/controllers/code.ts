@@ -182,6 +182,28 @@ const findPartType = async (req: Request, res: Response, next: NextFunction) => 
     }
    
 }
+const findTypeStk = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    logger.debug("Calling find all code endpoint")
+    try {
+        const codeServiceInstance = Container.get(CodeService)
+        const codes = await codeServiceInstance.findsome({code_fldname:'gls_rev'})
+       // 
+        var data = []
+        for (let code of codes){
+            data.push({value:  code.code_cmmt, label: code.code_cmmt})
+        }
+        
+        return res
+        .status(200)
+        .json(data )
+     
+    } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+   
+}
 const findDraw = async (req: Request, res: Response, next: NextFunction) => {
     const logger = Container.get("logger")
     logger.debug("Calling find all code endpoint")
@@ -327,6 +349,7 @@ export default {
     findModule,
     findTrans,
     findRev,
+    findTypeStk,
     findPartType,
     findDraw,
     findPromo,

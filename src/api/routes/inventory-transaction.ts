@@ -23,5 +23,10 @@ export default (app: Router) => {
     route.post('/inventoryofsecurity', controller.inventoryOfSecurity)
     route.post("/rct-wo", controller.rctWo)
     route.post("/iss-wo", controller.issWo)
+    route.post("/zakat", controller.zakatBy)
+    route.post('/cyc-rcnt', controller.cycRcnt);
+    route.post('/acscyc-rcnt', controller.acscycRcnt);
+    route.post('/glscyc-rcnt', controller.glscycRcnt);
+  
     
 }

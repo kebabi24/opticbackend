@@ -12,6 +12,7 @@ export default (app: Router) => {
     route.get("/module", controller.findModule)
     route.get("/trans", controller.findTrans)
     route.get("/rev", controller.findRev)
+    route.get("/typestk", controller.findTypeStk)
     route.get("/parttype", controller.findPartType)
     route.get("/draw", controller.findDraw)
     route.get("/promo", controller.findPromo)

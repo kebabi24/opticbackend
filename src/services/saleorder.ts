@@ -5,6 +5,7 @@ export default class SaleOrderService {
     constructor(
         @Inject("saleorderModel") private saleorderModel: Models.saleOrderModel,
         @Inject("customerModel") private customerModel: Models.CustomerModel,
+        @Inject("userModel") private userModel: Models.UserModel,
         @Inject("addressModel") private addressModel: Models.AddressModel,
         //  @Inject("requisitionModel") private requisitionModel: Models.RequisitionModel,
         @Inject("logger") private logger
@@ -39,6 +40,32 @@ export default class SaleOrderService {
             const saleorder = await this.saleorderModel.findAll({
                 where: query,
                 include: [this.customerModel],
+            })
+            this.logger.silly("find All saleorder mstr")
+            return saleorder
+        } catch (e) {
+            this.logger.error(e)
+            throw e
+        }
+    }
+    public async count(query: any): Promise<any> {
+        try {
+            const saleorder = await this.saleorderModel.count({
+                where: query,
+                
+            })
+            this.logger.silly("find All saleorder mstr")
+            return saleorder
+        } catch (e) {
+            this.logger.error(e)
+            throw e
+        }
+    }
+    public async findspec(query: any): Promise<any> {
+        try {
+            const saleorder = await this.saleorderModel.findAll({
+                where: query,
+                include: [{model:this.customerModel},{model:this.userModel}],
             })
             this.logger.silly("find All saleorder mstr")
             return saleorder

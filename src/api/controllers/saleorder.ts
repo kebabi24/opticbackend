@@ -17,7 +17,8 @@ import AccessoireService from '../../services/accessoire';
 import PenicheService from '../../services/peniche';
 import AccountShiperService from "../../services/account-shiper"
 import {  Sequelize } from 'sequelize';
-
+import VisiteService from "../../services/visite"
+import CodeService from "../../services/code"
 
 import inventoryTransactionService from '../../services/inventory-transaction';
 import { Router, Request, Response, NextFunction } from "express"
@@ -62,7 +63,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
         if(Number(saleOrder.so__dec01) - Number(saleOrder.so__dec02) <= 0 ) {
             open = false  
         }
-        const so = await saleOrderServiceInstance.create({...saleOrder,so__log01: open, so_stat: "O", so_fob: pen.pen_pen,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        const so = await saleOrderServiceInstance.create({...saleOrder,so__log01: open, so_stat: "O", so_ord_date: new Date(), so_fob: pen.pen_pen,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
         await penicheServiceInstance.update({pen_used : true, pen_nbr: so.so_nbr, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: pen.id})
     
         //  const cm = await customerServiceInstance.findOne({cm_addr: saleOrder.so_cust})
@@ -84,7 +85,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
                
           //}     
           const cm = await customerServiceInstance.findOne({cm_addr: saleOrder.so_cust})
-        if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) - Number(saleOrder.so__dec01)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
+        if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) + Number(saleOrder.so__dec01)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
        
         if (saleOrderDetail.length > 0) {
             for (let entry of saleOrderDetail) {
@@ -303,9 +304,12 @@ const createdirect = async (req: Request, res: Response, next: NextFunction) => 
         const costSimulationServiceInstance = Container.get(costSimulationService);
         const locationDetailServiceInstance = Container.get(locationAccessoireService);
         const inventoryTransactionServiceInstance = Container.get(inventoryTransactionService);
+        const accountShiperServiceInstance = Container.get(AccountShiperService)
         const itemServiceInstance = Container.get(AccessoireService);
         const { saleOrder, saleOrderDetail } = req.body
         const so = await saleOrderServiceInstance.create({...saleOrder,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        const as = await accountShiperServiceInstance.create({as_cust:saleOrder.so_cust,as_amt: saleOrder.so__dec01, as_effdate: new Date(),as_ship: so.so_nbr,as_curr: "DA",as_pay_method:"ES", as_type:"P",created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        
         for (let entry of saleOrderDetail) {
             entry = { ...entry, soda_nbr: so.so_nbr, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin }
             await saleOrderAccessoireServiceInstance.create(entry)
@@ -554,6 +558,30 @@ const findByAll = async (req: Request, res: Response, next: NextFunction) => {
         return next(e)
     }
 }
+const findByAllAdr = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    console.log(req.body)
+    logger.debug("Calling find by  all requisition endpoint")
+    try {
+        const saleOrderServiceInstance = Container.get(SaleOrderService)
+        
+        const sos = await saleOrderServiceInstance.findadd({...req.body })
+            // Will escape title and validate DESC against a list of valid direction parameters
+ for (let so of sos) {
+     so.chr04 = so.address.ad_name
+     so.chr05 = so.address.ad_name_control
+     }           
+        //console.log(sos)    
+        return res.status(202).json({
+            message: "sec",
+            data:  sos ,
+        })
+        
+    } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
 const findGlsAll = async (req: Request, res: Response, next: NextFunction) => {
     const logger = Container.get("logger")
     console.log(req.body)
@@ -602,6 +630,36 @@ const findGlsAll = async (req: Request, res: Response, next: NextFunction) => {
         
         
     } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
+const findrange = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    logger.debug("Calling find all purchaseOrder endpoint")
+    try {
+        let result = []
+        const saleOrderServiceInstance = Container.get(SaleOrderService)
+        const { date,date1 } = req.body;
+        
+        const sos = await saleOrderServiceInstance.findspec({
+          
+              so_ord_date: { [Op.between]: [date, date1] },
+                    //  attributes: ['sodg_part', 'sodg_for','sodg_desc', 'sodg_cyl', 'sodg_sph', 'sodg_add', [Sequelize.fn('sum', Sequelize.col('sodg_qty_ord')), 'total_qty']],
+           // group: ['sodg_part','sodg_for', 'sodg_desc','sodg_cyl', 'sodg_sph', 'sodg_add'],
+           // raw: true,
+          });
+         // console.log(sos)
+          for ( let so of sos) {
+            so.so__chr01 = so.user.usrd_name
+          }
+           return res
+          .status(200)
+          .json({ message: "fetched succesfully", data: sos })
+    }
+    
+    
+     catch (e) {
         logger.error("🔥 error: %o", e)
         return next(e)
     }
@@ -913,20 +971,402 @@ const findAllwithDetails = async (req: Request, res: Response, next: NextFunctio
         return next(e)
     } 
 }
+const findcustca = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    logger.debug("Calling find by  all customer endpoint")
+    try {
+        const saleOrderServiceInstance = Container.get(SaleOrderService)
+        const customerServiceInstance = Container.get(CustomerService)
+        const visiteServiceInstance = Container.get(VisiteService)
+        
+        const customer = await customerServiceInstance.find({})
+            
+        const results_head = [];
+        var i = 1
+        for (const cm of customer){
+            const invoice = await saleOrderServiceInstance.find({so_cust: 
+                cm.cm_addr,
+                so_ord_date: {[Op.between]: [req.body.date, req.body.date1],
+              },})
+            let ht_amt = 0;
+            let ttc_amt= 0;
+            for(const ih of invoice){
+                ht_amt = ht_amt + Number(ih.so_amt);
+                ttc_amt = ttc_amt + Number(ih.so__dec01);;
+            }  
+            
+            const visite = await visiteServiceInstance.count({vis_cust: 
+                cm.cm_addr,
+                vis_ord_date: {[Op.between]: [req.body.date, req.body.date1],
+              },})
+            
+             var today = new Date()
 
+             var calc_age = Number(today.getFullYear()) - Number((new Date(cm.cm_mod_date)).getFullYear())
+            
+                const result_head = {
+                    id         : i,
+                    code       : cm.cm_addr,
+                    name       : cm.address.ad_name,
+                    prenom     : cm.address.ad_name_control,
+                    solde      : cm.cm_balance,
+                    age        : calc_age,
+                    caht       : ht_amt,
+                    ca         : ttc_amt,
+                    nbr        : visite,
+            
+                };
+             
+          //  console.log(result_head)
+            if (visite != 0) {  
+                results_head.push(result_head);    
+                i = i + 1;
+            }
+        };
+       // console.log(results_head)
+
+        return res
+            .status(200)
+            .json({ message: "fetched succesfully", data: results_head })
+    } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
+
+const findsodDetail = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    console.log(req.body)
+    logger.debug("Calling find by  all saleOrder endpoint")
+    try {
+        const glassesServiceInstance = Container.get(GlassesService)
+        const codeServiceInstance = Container.get(CodeService)
+        
+        const saleOrderGlassesServiceInstance = Container.get(
+            SaleOrderGlassesService
+        )
+        const saleorder = await saleOrderGlassesServiceInstance.findSpecial({
+            where: {
+                
+                sodg_due_date: { [Op.between]: [req.body.date, req.body.date1] },
+              },
+        })
+       // console.log(saleorder)
+       let result =[]
+       var i = 1
+        for (const so of saleorder) {
+            const effdate = new Date(so.sodg_due_date)   
+            so.sodg_due_date = effdate.getUTCFullYear() + "-" + (effdate.getUTCMonth() + 1) + "-" + effdate.getUTCDate();
+            const glass = await glassesServiceInstance.findOne({gls_part : so.sodg_part})
+            const typstk = await codeServiceInstance.findOne({code_fldname: "gls_rev" , code_value: glass.gls_rev})
+            const parttype = await codeServiceInstance.findOne({code_fldname: "gls_part_type" , code_value: glass.gls_part_type})
+            const famille = await codeServiceInstance.findOne({code_fldname: "gls_draw" , code_value: glass.gls_draw})
+            const sfamille = await codeServiceInstance.findOne({code_fldname: "gls_dsgn_grp" , code_value: glass.gls_dsgn_grp})
+            const mrk = await codeServiceInstance.findOne({code_fldname: "gls_group" , code_value: glass.gls_group})
+            const trt = await codeServiceInstance.findOne({code_fldname: "gls_upc" , code_value: glass.gls_upc})
+            const color = await codeServiceInstance.findOne({code_fldname: "gls_promo" , code_value: glass.gls_promo})
+            
+//console.log(parttype)
+            result.push({id:i, nbr: so.sodg_nbr, effdate: so.sodg_due_date,part: so.sodg_part, desc : glass.gls_desc1, qty: so.sodg_qty_ord, amt: so.sodg_sales_price,
+                         typestk:typstk.code_cmmt,typepart: parttype.code_cmmt,famille:famille.code_cmmt,sfamille:sfamille.code_cmmt,
+                        mark: mrk.code_cmmt, trait : trt.code_cmmt, col: color.code_cmmt,
+                        diam: glass.gls_size, indice : glass.gls_net_wt,
+                        cyl: so.sodg_cyl, sph: so.sodg_sph, add: so.sodg_add
+                        })
+        //console.log(so)
+        i = i + 1 
+        
+        }
+
+        return res.status(201).json({ message: 'created succesfully', data: result});
+        //return res2.status(201).json({ message: 'created succesfully', data: results_body });
+    } catch (e) {
+        //#
+        logger.error('🔥 error: %o', e);
+        return next(e);
+    }
+}
+    
+
+const avoir = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    const{user_code} = req.headers
+
+    logger.debug("Calling Create sequence endpoint")
+    try {
+        const saleOrderServiceInstance = Container.get(SaleOrderService)
+        const locationDetailServiceInstance = Container.get(locationDetailService);
+        const locationAccessoireServiceInstance = Container.get(locationAccessoireService);
+        const locationGlassesServiceInstance = Container.get(locationGlassesService);
+        const costSimulationServiceInstance = Container.get(costSimulationService);
+        const inventoryTransactionServiceInstance = Container.get(inventoryTransactionService);
+        const itemServiceInstance = Container.get(itemService);
+        const glassesServiceInstance = Container.get(GlassesService);
+        const accessoireServiceInstance = Container.get(AccessoireService);
+        const customerServiceInstance = Container.get(CustomerService);
+        const accountShiperServiceInstance = Container.get(AccountShiperService)
+       
+        const saleOrderDetailServiceInstance = Container.get(
+            SaleOrderDetailService
+        )
+        const saleOrderGlassesServiceInstance = Container.get(
+            SaleOrderGlassesService
+        )
+        const saleOrderAccessoireServiceInstance = Container.get(
+            SaleOrderAccessoireService
+        )
+        const { saleOrder, saleOrderDetail, saleOrderGlasses, saleOrderAccessoire } = req.body
+       
+        
+        let open = true
+        if(Number(saleOrder.so__dec01) - Number(saleOrder.so__dec02) <= 0 ) {
+            open = false  
+        }
+        const so = await saleOrderServiceInstance.create({...saleOrder,so__log01: open, so__qadl01:true,so_ord_date: new Date(),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        
+        //  const cm = await customerServiceInstance.findOne({cm_addr: saleOrder.so_cust})
+        //if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) - Number(saleOrder.so__dec01)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
+        // const as = await accountShiperServiceInstance.create({
+            
+        //     as_ship : saleOrder.so_nbr,
+        //     as_cust : saleOrder.so_cust,
+        //     as_curr : "DA",
+        //     as_effdate : saleOrder.so_ord_date,
+        //     as_type : "P",
+        //     as_pay_method : saleOrder.so_cr_terms,
+        //     as_amt : saleOrder.so__dec02,
+        //     as_applied : saleOrder.so__dec02,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+       // const cm = await customerServiceInstance.findOne({cm_addr: req.body.as_cust})
+       // if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) + Number(req.body.as_amt)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
+        
+          //if(!isNull(saleOrder.so_fob)) {
+               
+          //}     
+          const cm = await customerServiceInstance.findOne({cm_addr: saleOrder.so_cust})
+        if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) + Number(saleOrder.so__dec01)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
+       
+        if (saleOrderDetail.length > 0) {
+            for (let entry of saleOrderDetail) {
+                entry = { ...entry, sod_nbr: so.so_nbr,sod_due_date: so.so_ord_date, sod_qty_ord: - Number(entry.sod_ord_qty),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin }
+                await saleOrderDetailServiceInstance.create(entry)
+           
+            }
+            /**********************stk*************************/
+            for (const item of saleOrderDetail) {
+                const {  ...remain } = item;
+                console.log(remain)
+                const sctdet = await costSimulationServiceInstance.findOne({ sct_part: remain.sod_part, sct_site: remain.sod_site,  sct_sim: 'STDCG' });
+                const pt = await itemServiceInstance.findOne({ pt_part: remain.sod_part });
+                console.log(remain.sod_part, remain.sod_site)
+                
+                console.log(remain.qty_oh)
+                console.log(sctdet.sct_cst_tot)
+                await inventoryTransactionServiceInstance.create({
+                  tr_status: remain.sod_status,
+                  tr_expire: remain.sod_expire,
+                  tr_line: remain.sod_line,
+                  tr_part: remain.sod_part,
+                  tr_prod_line: pt.pt_prod_line,
+                  tr_qty_loc: - Number(remain.sod_qty_ship),
+                  tr_um: remain.sod_um,
+                  tr_um_conv: remain.sod_um_conv,
+                  tr_ship_type: remain.sod_type,
+                  tr_price: remain.sod_price,
+                  tr_site: remain.sod_site,
+                  tr_loc: remain.sod_loc,
+                  tr_serial: remain.sod_serial,
+                  tr_nbr: so.so_nbr,
+                  tr_lot: null,
+                  tr_addr: so.so_cust,
+                  tr_effdate: so.so_ord_date,
+                  tr_so_job: null,
+                  tr_ref: remain.sod_ref,
+                  tr_curr: so.so_curr,
+                  tr_ex_rate: so.so_ex_rate,
+                  tr_ex_rate2: so.so_ex_rate2,
+                  tr_rmks: so.so_rmks,
+                  tr_type:'ISS-SO',
+                  tr_qty_chg:  Number(remain.sod_qty_ord),
+                  tr_loc_begin: Number(remain.qty_oh),
+                  tr_gl_amt: Number(remain.sod_qty_ord) * (sctdet.sct_cst_tot),
+                  tr_date: new Date(),
+                  tr_mtl_std: sctdet.sct_mtl_tl,
+                  tr_lbr_std: sctdet.sct_lbr_tl, 
+                  tr_bdn_std: sctdet.sct_bdn_tl, 
+                  tr_ovh_std: sctdet.sct_ovh_tl,
+                  tr_sub_std: sctdet.sct_sub_tl,
+                  created_by:user_code,created_ip_adr: req.headers.origin,
+                  last_modified_by:user_code,last_modified_ip_adr: req.headers.origin
+                  });
+                  
+                  if(remain.sod_type != 'M') {
+                  const ld = await locationDetailServiceInstance.findOne({ld_part: remain.sod_part, ld_lot: remain.sod_serial, ld_site: remain.sod_site,ld_loc: remain.sod_loc,ld_ref: remain.sod_ref})
+                  if(ld) {await locationDetailServiceInstance.update({ld_qty_oh : Number(ld.ld_qty_oh) - (Number(remain.sod_qty_ord)* Number(remain.sod_um_conv)), ld_expire: remain.sod_expire, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: ld.id})
+                 console.log("rani hnnnnnnnnnnnnnnnnnnnnnnnald.ld_qty_oh") 
+                 }else await locationDetailServiceInstance.create({ld_part: remain.sod_part,ld_date: new Date(), ld_lot:remain.sod_serial, ld_site: remain.sod_site,ld_loc: remain.sod_loc, ld_ref: remain.sod_ref, ld_qty_oh : - (Number(remain.sod_qty_ord)* Number(remain.sod_um_conv)), ld_expire: remain.sod_expire, ld_status: remain.sod_status, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+                  }
+              }
+            
+            /**********************stk*************************/
+       }    
+       if (saleOrderGlasses.length > 0) {
+       
+            for (let entry of saleOrderGlasses) {
+                const pt = await glassesServiceInstance.findOne({ gls_part: entry.sodg_part });
+                            
+                entry = { ...entry, sodg_for: pt.gls_vend,sodg_due_date: so.so_ord_date,sodg_nbr: so.so_nbr, sodg_qty_ord: - Number(entry.sodg_ord_qty),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin }
+                await saleOrderGlassesServiceInstance.create(entry)
+            }
+
+                        /**********************stk*************************/
+                        for (const item of saleOrderGlasses) {
+                            const {  ...remain } = item;
+                            console.log(remain)
+                            const sctdet = await costSimulationServiceInstance.findOne({ sct_part: remain.sodg_part, sct_site: remain.sodg_site,  sct_sim: 'STDCG' });
+                            const pt = await glassesServiceInstance.findOne({ gls_part: remain.sodg_part });
+                            console.log(remain.sodg_part, remain.sodg_site)
+                            
+                            console.log(remain.qty_oh)
+                            console.log(sctdet.sct_cst_tot)
+                            await inventoryTransactionServiceInstance.create({
+                              tr_status: remain.sodg_status,
+                              tr_expire: remain.sodg_expire,
+                              tr_line: remain.sodg_line,
+                              tr_part: remain.sodg_part,
+                              tr_prod_line: pt.pt_prod_line,
+                              tr_qty_loc: - Number(remain.sodg_qty_ord),
+                              tr_um: remain.sodg_um,
+                              tr_um_conv: remain.sodg_um_conv,
+                              tr_ship_type: remain.sodg_type,
+                              tr_price: remain.sodg_price,
+                              tr_site: remain.sodg_site,
+                              tr_loc: remain.sodg_loc,
+                              tr_serial: remain.sodg_serial,
+                              tr_dec01: remain.sodg_cyl,
+                              tr_dec02: remain.sodg_sph,
+                              tr_dec03: remain.sodg_add,
+                              tr_nbr: so.so_nbr,
+                              tr_lot: null,
+                              tr_addr: so.so_cust,
+                              tr_effdate: so.so_ord_date,
+                              tr_so_job: null,
+                              tr_ref: remain.sodg_ref,
+                              tr_curr: so.so_curr,
+                              tr_ex_rate: so.so_ex_rate,
+                              tr_ex_rate2: so.so_ex_rate2,
+                              tr_rmks: so.so_rmks,
+                              tr_type:'ISS-SO',
+                              tr_qty_chg:  Number(remain.sodg_qty_ord),
+                              tr_loc_begin: Number(remain.qtyoh),
+                              tr_gl_amt: Number(remain.sodg_qty_ord) * (sctdet.sct_cst_tot),
+                              tr_date: new Date(),
+                              tr_mtl_std: sctdet.sct_mtl_tl,
+                              tr_lbr_std: sctdet.sct_lbr_tl, 
+                              tr_bdn_std: sctdet.sct_bdn_tl, 
+                              tr_ovh_std: sctdet.sct_ovh_tl,
+                              tr_sub_std: sctdet.sct_sub_tl,
+                              created_by:user_code,created_ip_adr: req.headers.origin,
+                              last_modified_by:user_code,last_modified_ip_adr: req.headers.origin
+                              });
+                              
+                              if(remain.sodg_type != 'M') {
+                              const ld = await locationGlassesServiceInstance.findOne({ldg_part: remain.sodg_part, ldg_lot: remain.sodg_serial, ldg_site: remain.sodg_site,ldg_loc: remain.sodg_loc,ldg_ref: remain.sodg_ref, ldg_sph: remain.sodg_sph, ldg_cyl: remain.sodg_cyl, ldg_add: remain.sodg_add })
+                              if(ld) await locationGlassesServiceInstance.update({ldg_qty_oh : Number(ld.ldg_qty_oh) - (Number(remain.sodg_qty_ord)* Number(remain.sodg_um_conv)), ldg_expire: remain.sodg_expire, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: ld.id})
+                              else await locationGlassesServiceInstance.create({ldg_part: remain.sodg_part,ldg_date: new Date(), ldg_lot:remain.sodg_serial, ldg_site: remain.sodg_site,ldg_loc: remain.sodg_loc, ldg_ref: remain.sodg_ref, ldg_qty_oh : - (Number(remain.sodg_qty_ord)* Number(remain.sodg_um_conv)), ldg_expire: remain.sodg_expire, ldg_status: remain.sodg_status, ldg_sph: remain.sodg_sph, ldg_cyl: remain.sodg_cyl, ldg_add: remain.sodg_add, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+                              }
+                          }
+                        
+                        /**********************stk*************************/
+        }
+        if (saleOrderAccessoire.length > 0) {
+            for (let entry of saleOrderAccessoire) {
+                entry = { ...entry, soda_nbr: so.so_nbr,soda_due_date: so.so_ord_date,sod_qty_ord: - Number(entry.soda_ord_qty),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin }
+                await saleOrderAccessoireServiceInstance.create(entry)
+            }
+             /**********************stk*************************/
+             for (const item of saleOrderAccessoire) {
+                const {  ...remain } = item;
+                console.log(remain)
+                const sctdet = await costSimulationServiceInstance.findOne({ sct_part: remain.soda_part, sct_site: remain.soda_site,  sct_sim: 'STDCG' });
+                const pt = await accessoireServiceInstance.findOne({ acs_part: remain.soda_part });
+                console.log(remain.soda_part, remain.soda_site)
+                
+                console.log(remain.qty_oh)
+                console.log(sctdet.sct_cst_tot)
+                await inventoryTransactionServiceInstance.create({
+                  tr_status: remain.soda_status,
+                  tr_expire: remain.soda_expire,
+                  tr_line: remain.soda_line,
+                  tr_part: remain.soda_part,
+                  tr_prod_line: pt.pt_prod_line,
+                  tr_qty_loc: - Number(remain.soda_qty_ord),
+                  tr_um: remain.soda_um,
+                  tr_um_conv: remain.soda_um_conv,
+                  tr_ship_type: remain.soda_type,
+                  tr_price: remain.soda_price,
+                  tr_site: remain.soda_site,
+                  tr_loc: remain.soda_loc,
+                  tr_serial: remain.soda_serial,
+                  tr_nbr: so.so_nbr,
+                  tr_lot: null,
+                  tr_addr: so.so_cust,
+                  tr_effdate: so.so_ord_date,
+                  tr_so_job: null,
+                  tr_ref: remain.soda_ref,
+                  tr_curr: so.so_curr,
+                  tr_ex_rate: so.so_ex_rate,
+                  tr_ex_rate2: so.so_ex_rate2,
+                  tr_rmks: so.so_rmks,
+                  tr_type:'ISS-SO',
+                  tr_qty_chg:  Number(remain.soda_qty_ord),
+                  tr_loc_begin: Number(remain.qty_oh),
+                  tr_gl_amt: Number(remain.soda_qty_ord) * (sctdet.sct_cst_tot),
+                  tr_date: new Date(),
+                  tr_mtl_std: sctdet.sct_mtl_tl,
+                  tr_lbr_std: sctdet.sct_lbr_tl, 
+                  tr_bdn_std: sctdet.sct_bdn_tl, 
+                  tr_ovh_std: sctdet.sct_ovh_tl,
+                  tr_sub_std: sctdet.sct_sub_tl,
+                  created_by:user_code,created_ip_adr: req.headers.origin,
+                  last_modified_by:user_code,last_modified_ip_adr: req.headers.origin
+                  });
+                  
+                  if(remain.soda_type != 'M') {
+                  const ld = await locationAccessoireServiceInstance.findOne({lda_part: remain.soda_part, lda_lot: remain.soda_serial, lda_site: remain.soda_site,lda_loc: remain.soda_loc,lda_ref: remain.soda_ref})
+                  if(ld) await locationAccessoireServiceInstance.update({lda_qty_oh : Number(ld.lda_qty_oh) - (Number(remain.soda_qty_ord)* Number(remain.soda_um_conv)), lda_expire: remain.soda_expire, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: ld.id})
+                  else await locationAccessoireServiceInstance.create({lda_part: remain.soda_part,lda_date: new Date(), lda_lot:remain.soda_serial, lda_site: remain.soda_site,lda_loc: remain.soda_loc, lda_ref: remain.soda_ref, lda_qty_oh : - (Number(remain.soda_qty_ord)* Number(remain.soda_um_conv)), lda_expire: remain.soda_expire, lda_status: remain.soda_status, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+                  }
+              }
+            
+            /**********************stk*************************/
+        }    
+        return res
+            .status(201)
+            .json({ message: "created succesfully", data: so })
+    } catch (e) {
+        //#
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
 export default {
     create,
     createdirect,
     findBy,
     findDetail,
+    findsodDetail,
     findByAll,
+    findByAllAdr,
     findGlsAll,
     findOne,
     findAll,
     findByrange,
+    findrange,
+    findcustca,
     update,
     updateSo,
     findAllwithDetails,
     getActivity,
     getCA,
+    avoir
 }

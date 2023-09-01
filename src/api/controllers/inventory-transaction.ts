@@ -13,6 +13,11 @@ import workOrderDetailService from '../../services/work-order-detail';
 import sequelize from '../../loaders/sequelize';
 import Item from '../../models/item';
 import moment from 'moment';
+
+import LocationAccessoireService from '../../services/location-accessoire';
+import LocationGlassesService from '../../services/location-glasses';
+import GlassService from '../../services/glasses';
+import AccessoireService from '../../services/accessoire';
 const create = async (req: Request, res: Response, next: NextFunction) => {
   const logger = Container.get('logger');
   const { user_code } = req.headers;
@@ -1178,6 +1183,574 @@ const issWo = async (req: Request, res: Response, next: NextFunction) => {
   }
 };
 
+const zakatBy = async (req: Request, res: Response, next: NextFunction) => {
+  const logger = Container.get('logger');
+  logger.debug('Calling find by  all code endpoint');
+  try {
+
+    const { type, date, date1 } = req.body;
+    const inventoryTransactionServiceInstance = Container.get(InventoryTransactionService);
+    const locationDetailsServiceInstance = Container.get(locationDetailService)
+    const locationGlassesServiceInstance = Container.get(LocationGlassesService)
+    const locationAccessoireServiceInstance = Container.get(LocationAccessoireService)
+    const itemServiceInstance = Container.get(itemService);
+    const glassesServiceInstance = Container.get(GlassService);
+
+    const accessoireServiceInstance = Container.get(AccessoireService);
+    const costSimulationServiceInstance = Container.get(costSimulationService);
+
+    const ldms = await locationDetailsServiceInstance.findSpecial({
+     
+      attributes: ['ld_part',  [Sequelize.fn('sum', Sequelize.col('ld_qty_oh')), 'total_qty']],
+      group: ['ld_part'],
+      raw: true,
+    });
+    const ldgs = await locationGlassesServiceInstance.find({});
+    const ldas = await locationAccessoireServiceInstance.findSpecial({
+     
+      attributes: ['lda_part',  [Sequelize.fn('sum', Sequelize.col('lda_qty_oh')), 'total_qty']],
+      group: ['lda_part'],
+      raw: true,
+    });
+console.log(type,date,date1)
+    let ld = []
+    let i = 1
+    let total = 0
+    for (let ldm of ldms) {
+      const item = await itemServiceInstance.findOne({ pt_part: ldm.ld_part });
+      const sct = await costSimulationServiceInstance.findOne({
+        sct_part: item.pt_part,
+        sct_site: item.pt_site,
+        sct_sim: 'STDCG',
+      });
+
+      let prix = 0
+      if (type == 1 ) {
+     
+        const old_tr = await inventoryTransactionServiceInstance.findOneS({
+          where : {
+            tr_type : "RCT-PO" ,
+            tr_part : ldm.ld_part,
+            tr_effdate:{[Op.between]: [date, date1]},
+          },
+        order: [['tr_effdate', 'DESC'],['id', 'DESC']], 
+              
+        }) 
+        if (old_tr) { prix = old_tr.tr_price} else { prix = 0}
+      }else {
+        //  sequelize.fn('max', sequelize.col('age')),
+        const maxprice = await inventoryTransactionServiceInstance.findSpecial({
+          where : {
+            tr_type : "RCT-PO" ,
+            tr_part : ldm.ld_part,
+            tr_effdate:{[Op.between]: [date, date1]},
+          },
+          attributes: ['tr_part',  [Sequelize.fn('max', Sequelize.col('tr_price')), 'maxprice']],
+          group: ['tr_part'],
+          raw: true,
+        }); 
+        console.log("maxprice",maxprice[0].maxprice)
+        if (maxprice.length>0) { prix = maxprice[0].maxprice} else { prix = 0}
+        }
+      let obj = {
+        id: i,
+        code : ldm.ld_part,
+        desc: item.pt_desc1,
+        qty: ldm.total_qty,
+        price: prix,
+        amt: prix * ldm.total_qty
+      }
+      ld.push(obj)
+      i = i + 1
+      total = total + (prix * ldm.total_qty)
+    }
+    for (let ldg of ldgs) {
+      const glass = await glassesServiceInstance.findOne({ gls_part: ldg.ldg_part });
+      const sct = await costSimulationServiceInstance.findOne({
+        sct_part: glass.gls_part,
+        sct_site: glass.gls_site,
+        sct_sim: 'STDCG',
+      });
+      let prix = 0
+      if (type == 1 ) {
+     
+        const old_tr = await inventoryTransactionServiceInstance.findOneS({
+          where : {
+            tr_type : "RCT-PO" ,
+            tr_part : ldg.ldg_part,
+            tr__dec01: ldg.ldg_sph,
+            tr__dec02: ldg.ldg_cyl,
+            tr__dec03: ldg.ldg_add,
+            tr_effdate:{[Op.between]: [date, date1]},
+          },
+        order: [['tr_effdate', 'DESC'],['id', 'DESC']], 
+              
+        }) 
+        if (old_tr) { prix = old_tr.tr_price} else { prix = 0}
+      } 
+      else {
+        //  sequelize.fn('max', sequelize.col('age')),
+        const maxprice = await inventoryTransactionServiceInstance.findSpecial({
+          where : {
+            tr_type : "RCT-PO" ,
+            tr_part : ldg.ldg_part,
+            tr__dec01: ldg.ldg_sph,
+            tr__dec02: ldg.ldg_cyl,
+            tr__dec03: ldg.ldg_add,
+            tr_effdate:{[Op.between]: [date, date1]},
+          },
+          attributes: ['tr_part',  [Sequelize.fn('max', Sequelize.col('tr_price')), 'maxprice']],
+          group: ['tr_part'],
+          raw: true,
+        }); 
+        console.log("maxprice",maxprice[0].maxprice)
+        if (maxprice.length>0) { prix = maxprice[0].maxprice} else { prix = 0}
+        }
+      let obj = {
+        id:i,
+        code : ldg.ldg_part,
+        desc: glass.gls_desc1,
+        qty: ldg.ldg_qty_oh,
+        price: prix,
+        amt: prix * ldg.ldg_qty_oh
+      }
+      ld.push(obj)
+      i = i + 1
+      total = total + (prix * ldg.ldg_qty_oh)
+    }
+    for (let lda of ldas) {
+      const accessoire = await accessoireServiceInstance.findOne({ acs_part: lda.lda_part });
+      const sct = await costSimulationServiceInstance.findOne({
+        sct_part: accessoire.acs_part,
+        sct_site: accessoire.acs_site,
+        sct_sim: 'STDCG',
+      });
+      let prix = 0
+      if (type == 1 ) {
+     
+        const old_tr = await inventoryTransactionServiceInstance.findOneS({
+          where : {
+            tr_type : "RCT-PO" ,
+            tr_part : lda.lda_part,
+            tr_effdate:{[Op.between]: [date, date1]},
+          },
+        order: [['tr_effdate', 'DESC'],['id', 'DESC']], 
+              
+        }) 
+        if (old_tr) { prix = old_tr.tr_price} else { prix = 0}
+      } else {
+      //  sequelize.fn('max', sequelize.col('age')),
+      const maxprice = await inventoryTransactionServiceInstance.findSpecial({
+        where : {
+          tr_type : "RCT-PO" ,
+          tr_part : lda.lda_part,
+          tr_effdate:{[Op.between]: [date, date1]},
+        },
+        attributes: ['tr_part',  [Sequelize.fn('max', Sequelize.col('tr_price')), 'maxprice']],
+        group: ['tr_part'],
+        raw: true,
+      }); 
+      console.log("maxprice",maxprice[0].maxprice)
+      if (maxprice.length>0) { prix = maxprice[0].maxprice} else { prix = 0}
+      }
+      let obj = {
+        id:i,
+        code : lda.lda_part,
+        desc: accessoire.acs_desc1,
+        qty: lda.total_qty,
+        price: prix,
+        amt: prix * lda.total_qty
+      }
+      ld.push(obj)
+      i = i + 1
+      total = total + (prix * lda.total_qty)
+    }
+    ld.push({id:i, desc: "Total", amt:total})
+    return res.status(200).json({ message: 'fetched succesfully', data: ld });
+  } catch (e) {
+    logger.error('🔥 error: %o', e);
+    return next(e);
+  }
+};
+
+const cycRcnt = async (req: Request, res: Response, next: NextFunction) => {
+  const logger = Container.get('logger');
+  const { user_code } = req.headers;
+  // console.log(req.body);
+  //const { detail } = req.body;
+  // console.log(detail);
+  logger.debug('Calling update one  code endpoint');
+  try {
+    const { detail } = req.body;
+
+    const costSimulationServiceInstance = Container.get(costSimulationService);
+    const locationDetailServiceInstance = Container.get(locationDetailService);
+    const inventoryTransactionServiceInstance = Container.get(InventoryTransactionService);
+    const itemsServiceInstance = Container.get(itemService);
+    for (const item of detail) {
+      const { ...remain } = item;
+      if (remain.qty_inv !== undefined) {
+        
+      //  console.log("herrrrrrrrrrrrrrrrrrre",remain)
+        const sctdet = await costSimulationServiceInstance.findOne({
+          sct_part: remain.ld_part,
+          sct_site: remain.ld_site,
+          sct_sim: 'STDCG',
+        });
+      //  console.log("cst",sctdet)
+        const pt = await itemsServiceInstance.findOne({ pt_part: remain.ld_part});
+        // console.log(remain.tr_part, remain.tr_site);
+        const ld = await locationDetailServiceInstance.findOne({
+          ld_part: remain.ld_part,
+          ld_lot: remain.ld_lot,
+          ld_site: remain.ld_site,
+          ld_loc: remain.ld_loc,
+          ld_ref: remain.ld_ref
+        });
+        let qtydiff = 0
+        let qtybeg = 0
+        if (ld) {
+          qtydiff =  Number(remain.qty_inv) - Number(ld.ld_qty_oh)
+          qtybeg = Number(ld.ld_qty_oh)
+        } else {  qtydiff =  Number(remain.qty_inv) 
+                  qtybeg = 0
+        }
+       // item.qty_inv = undefined && (item.qty_inv = 0);
+        await inventoryTransactionServiceInstance.create({
+        
+          // tr_line: remain.tr_line,
+          tr_part: remain.ld_part,
+          tr_prod_line: pt.pt_prod_line,
+          tr_qty_loc: qtydiff,
+          tr_um: pt.pt_um,
+          tr_um_conv: 1,
+          tr_price: sctdet.sct_cst_tot,
+          tr_site: remain.ld_site,
+          tr_loc: remain.ld_loc,
+          tr_serial: remain.ld_lot,
+          tr_ref: remain.ld_ref,
+          tr_nbr: new Date().toString(),
+          tr_lot: '',
+          // tr_addr: so.so_cust,
+          tr_effdate: new Date(),
+          tr_so_job: null,
+          tr_ex_rate: 1,
+          tr_ex_rate2: 1,
+          tr_ship_type: null,
+          tr_type: 'CYC-RCNT',
+          tr_qty_chg: Number(remain.qty_inv),
+          tr_loc_begin: qtybeg,
+          tr_gl_amt: (Number(qtydiff)) * sctdet.sct_cst_tot,
+          tr_date: new Date(),
+          tr_mtl_std: sctdet.sct_mtl_tl,
+          tr_lbr_std: sctdet.sct_lbr_tl,
+          tr_bdn_std: sctdet.sct_bdn_tl,
+          tr_ovh_std: sctdet.sct_ovh_tl,
+          tr_sub_std: sctdet.sct_sub_tl,
+          created_by: user_code,
+          created_ip_adr: req.headers.origin,
+          last_modified_by: user_code,
+          last_modified_ip_adr: req.headers.origin,
+        });
+
+       
+
+          if (ld) {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+            //          console.log(Number(remain.tag_cnt_qty));
+            await locationDetailServiceInstance.update(
+              {
+                ld_qty_oh: Number(remain.qty_inv),
+
+                last_modified_by: user_code,
+                last_modified_ip_adr: req.headers.origin,
+              },
+              { id: ld.id },
+            );
+          } else {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+
+            await locationDetailServiceInstance.create({
+            
+              ld_part: remain.ld_part,
+              ld_date: new Date(),
+              ld_lot: remain.ld_lot,
+              ld_ref: remain.ld_ref,
+              ld_site: remain.ld_site,
+              ld_loc: remain.ld_loc,
+              ld_qty_oh: Number(remain.qty_inv),
+              created_by: user_code,
+              created_ip_adr: req.headers.origin,
+              last_modified_by: user_code,
+              last_modified_ip_adr: req.headers.origin,
+            });
+          }
+        
+      }
+    }
+   
+    return res.status(200).json({ message: 'deleted succesfully', data: true });
+  } catch (e) {
+    logger.error('🔥 error: %o', e);
+    return next(e);
+  }
+};
+
+
+
+const acscycRcnt = async (req: Request, res: Response, next: NextFunction) => {
+  const logger = Container.get('logger');
+  const { user_code } = req.headers;
+  // console.log(req.body);
+  //const { detail } = req.body;
+  // console.log(detail);
+  logger.debug('Calling update one  code endpoint');
+  try {
+    const { detail } = req.body;
+
+    const costSimulationServiceInstance = Container.get(costSimulationService);
+    const locationAccessoireServiceInstance = Container.get(LocationAccessoireService);
+    const inventoryTransactionServiceInstance = Container.get(InventoryTransactionService);
+    const accessoireServiceInstance = Container.get(AccessoireService);
+    for (const item of detail) {
+      const { ...remain } = item;
+      if (remain.qty_inv !== undefined) {
+        
+      //  console.log("herrrrrrrrrrrrrrrrrrre",remain)
+        const sctdet = await costSimulationServiceInstance.findOne({
+          sct_part: remain.lda_part,
+          sct_site: remain.lda_site,
+          sct_sim: 'STDCG',
+        });
+      //  console.log("cst",sctdet)
+        const pt = await accessoireServiceInstance.findOne({ acs_part: remain.lda_part});
+        // console.log(remain.tr_part, remain.tr_site);
+        const lda = await locationAccessoireServiceInstance.findOne({
+          lda_part: remain.lda_part,
+          lda_lot: remain.lda_lot,
+          lda_site: remain.lda_site,
+          lda_loc: remain.lda_loc,
+          lda_ref: remain.lda_ref
+        });
+        let qtydiff = 0
+        let qtybeg = 0
+        if (lda) {
+          qtydiff =  Number(remain.qty_inv) - Number(lda.lda_qty_oh)
+          qtybeg = Number(lda.lda_qty_oh)
+        } else {  qtydiff =  Number(remain.qty_inv) 
+                  qtybeg = 0
+        }
+       // item.qty_inv = undefined && (item.qty_inv = 0);
+        await inventoryTransactionServiceInstance.create({
+        
+          // tr_line: remain.tr_line,
+          tr_part: remain.lda_part,
+          tr_prod_line: pt.acs_prod_line,
+          tr_qty_loc: qtydiff,
+          tr_um: pt.acs_um,
+          tr_um_conv: 1,
+          tr_price: sctdet.sct_cst_tot,
+          tr_site: remain.lda_site,
+          tr_loc: remain.lda_loc,
+          tr_serial: remain.lda_lot,
+          tr_ref: remain.lda_ref,
+          tr_nbr: new Date().toString(),
+          tr_lot: '',
+          // tr_addr: so.so_cust,
+          tr_effdate: new Date(),
+          tr_so_job: null,
+          tr_ex_rate: 1,
+          tr_ex_rate2: 1,
+          tr_ship_type: null,
+          tr_type: 'CYC-RCNT',
+          tr_qty_chg: Number(remain.qty_inv),
+          tr_loc_begin: qtybeg,
+          tr_gl_amt: (Number(qtydiff)) * sctdet.sct_cst_tot,
+          tr_date: new Date(),
+          tr_mtl_std: sctdet.sct_mtl_tl,
+          tr_lbr_std: sctdet.sct_lbr_tl,
+          tr_bdn_std: sctdet.sct_bdn_tl,
+          tr_ovh_std: sctdet.sct_ovh_tl,
+          tr_sub_std: sctdet.sct_sub_tl,
+          created_by: user_code,
+          created_ip_adr: req.headers.origin,
+          last_modified_by: user_code,
+          last_modified_ip_adr: req.headers.origin,
+        });
+
+       
+
+          if (lda) {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+            //          console.log(Number(remain.tag_cnt_qty));
+            await locationAccessoireServiceInstance.update(
+              {
+                lda_qty_oh: Number(remain.qty_inv),
+
+                last_modified_by: user_code,
+                last_modified_ip_adr: req.headers.origin,
+              },
+              { id: lda.id },
+            );
+          } else {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+
+            await locationAccessoireServiceInstance.create({
+            
+              lda_part: remain.lda_part,
+              lda_date: new Date(),
+              lda_lot: remain.lda_lot,
+              lda_ref: remain.lda_ref,
+              lda_site: remain.lda_site,
+              lda_loc: remain.lda_loc,
+              lda_qty_oh: Number(remain.qty_inv),
+              created_by: user_code,
+              created_ip_adr: req.headers.origin,
+              last_modified_by: user_code,
+              last_modified_ip_adr: req.headers.origin,
+            });
+          }
+        
+      }
+    }
+   
+    return res.status(200).json({ message: 'deleted succesfully', data: true });
+  } catch (e) {
+    logger.error('🔥 error: %o', e);
+    return next(e);
+  }
+};
+const glscycRcnt = async (req: Request, res: Response, next: NextFunction) => {
+  const logger = Container.get('logger');
+  const { user_code } = req.headers;
+  // console.log(req.body);
+  //const { detail } = req.body;
+  // console.log(detail);
+  logger.debug('Calling update one  code endpoint');
+  try {
+    const { detail } = req.body;
+
+    const costSimulationServiceInstance = Container.get(costSimulationService);
+    const locationGlassesServiceInstance = Container.get(LocationGlassesService);
+    const inventoryTransactionServiceInstance = Container.get(InventoryTransactionService);
+    const glassesServiceInstance = Container.get(GlassService);
+    for (const item of detail) {
+      const { ...remain } = item;
+      if (remain.qty_inv !== undefined) {
+        
+      //  console.log("herrrrrrrrrrrrrrrrrrre",remain)
+        const sctdet = await costSimulationServiceInstance.findOne({
+          sct_part: remain.ldg_part,
+          sct_site: remain.ldg_site,
+          sct_sim: 'STDCG',
+          dec01: remain.ldg_sph,
+          dec02: remain.ldg_cyl,
+          dec03: remain.ldg_add,
+        });
+      //  console.log("cst",sctdet)
+        const pt = await glassesServiceInstance.findOne({ gls_part: remain.ldg_part});
+        // console.log(remain.tr_part, remain.tr_site);
+        const ldg = await locationGlassesServiceInstance.findOne({
+          ldg_part: remain.ldg_part,
+          ldg_lot: remain.ldg_lot,
+          ldg_site: remain.ldg_site,
+          ldg_loc: remain.ldg_loc,
+          ldg_ref: remain.ldg_ref,
+          ldg_cyl: remain.ldg_cyl,
+          ldg_sph: remain.ldg_sph,
+          ldg_add: remain.ldg_add,
+        });
+        let qtydiff = 0
+        let qtybeg = 0
+        if (ldg) {
+          qtydiff =  Number(remain.qty_inv) - Number(ldg.ldg_qty_oh)
+          qtybeg = Number(ldg.ldg_qty_oh)
+        } else {  qtydiff =  Number(remain.qty_inv) 
+                  qtybeg = 0
+        }
+       // item.qty_inv = undefined && (item.qty_inv = 0);
+        await inventoryTransactionServiceInstance.create({
+        
+          // tr_line: remain.tr_line,
+          tr_part: remain.ldg_part,
+          tr_prod_line: pt.gls_prod_line,
+          tr_qty_loc: qtydiff,
+          tr_um: pt.gls_um,
+          tr_um_conv: 1,
+          tr_price: sctdet.sct_cst_tot,
+          tr_site: remain.ldg_site,
+          tr_loc: remain.ldg_loc,
+          tr_serial: remain.ldg_lot,
+          tr_ref: remain.ldg_ref,
+          tr_nbr: new Date().toString(),
+          tr_lot: '',
+          // tr_addr: so.so_cust,
+          tr_effdate: new Date(),
+          tr_so_job: null,
+          tr_ex_rate: 1,
+          tr_ex_rate2: 1,
+          tr_ship_type: null,
+          tr_type: 'CYC-RCNT',
+          tr_qty_chg: Number(remain.qty_inv),
+          tr_loc_begin: qtybeg,
+          tr_gl_amt: (Number(qtydiff)) * sctdet.sct_cst_tot,
+          tr_date: new Date(),
+          tr_mtl_std: sctdet.sct_mtl_tl,
+          tr_lbr_std: sctdet.sct_lbr_tl,
+          tr_bdn_std: sctdet.sct_bdn_tl,
+          tr_ovh_std: sctdet.sct_ovh_tl,
+          tr_sub_std: sctdet.sct_sub_tl,
+          created_by: user_code,
+          created_ip_adr: req.headers.origin,
+          last_modified_by: user_code,
+          last_modified_ip_adr: req.headers.origin,
+        });
+
+       
+
+          if (ldg) {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+            //          console.log(Number(remain.tag_cnt_qty));
+            await locationGlassesServiceInstance.update(
+              {
+                ldg_qty_oh: Number(remain.qty_inv),
+
+                last_modified_by: user_code,
+                last_modified_ip_adr: req.headers.origin,
+              },
+              { id: ldg.id },
+            );
+          } else {
+           // let qty = Number(remain.tag_cnt_qty) > 0 ? Number(remain.tag_cnt_qty) : Number(ld.ld_qty_oh);
+
+            await locationGlassesServiceInstance.create({
+            
+              ldg_part: remain.ldg_part,
+              ldg_date: new Date(),
+              ldg_lot: remain.ldg_lot,
+              ldg_ref: remain.ldg_ref,
+              ldg_site: remain.ldg_site,
+              ldg_loc: remain.ldg_loc,
+              ldg_cyl: remain.ldg_cyl,
+              ldg_sph : remain.ldg_sph,
+              ldg_add: remain.ldg_add,
+              ldg_qty_oh: Number(remain.qty_inv),
+              created_by: user_code,
+              created_ip_adr: req.headers.origin,
+              last_modified_by: user_code,
+              last_modified_ip_adr: req.headers.origin,
+            });
+          }
+        
+      }
+    }
+   
+    return res.status(200).json({ message: 'deleted succesfully', data: true });
+  } catch (e) {
+    logger.error('🔥 error: %o', e);
+    return next(e);
+  }
+};
 export default {
   create,
   findOne,
@@ -1196,4 +1769,8 @@ export default {
   inventoryOfSecurity,
   rctWo,
   issWo,
+  zakatBy,
+  cycRcnt,
+  acscycRcnt,
+  glscycRcnt,
 };

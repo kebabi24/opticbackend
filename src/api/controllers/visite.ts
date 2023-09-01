@@ -10,7 +10,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const visiteServiceInstance = Container.get(VisiteService)
         const { visite, soNbr } = req.body
-        const vis = await visiteServiceInstance.create({...visite,vis_so_nbr:soNbr ,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        const vis = await visiteServiceInstance.create({...visite,vis_so_nbr:soNbr ,vis_ord_date: new Date(),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
         
         return res
             .status(201)

@@ -8,6 +8,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
 
     logger.debug("Calling Create profile endpoint")
     try {
+        console.log(req.body)
         const profileServiceInstance = Container.get(ProfileService)
         const profile = await profileServiceInstance.create({...req.body, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
         return res

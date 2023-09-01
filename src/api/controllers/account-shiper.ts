@@ -3,6 +3,7 @@ import BankDetailService from "../../services/bank-detail"
 import SaleOrderService from "../../services/saleorder"
 import CustomerService from "../../services/customer"
 import PenicheService from "../../services/peniche"
+import { DATE, Op } from 'sequelize';
 
 import { Router, Request, Response, NextFunction } from "express"
 import { Container } from "typedi"
@@ -18,19 +19,19 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
         const customerServiceInstance = Container.get(CustomerService)
         const penicheServiceInstance = Container.get(PenicheService)
         const saleOrderServiceInstance = Container.get(SaleOrderService)
-        const accountShiper = await accountShiperServiceInstance.create({...req.body,as_nbr: req.body.pshnbr,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        const accountShiper = await accountShiperServiceInstance.create({...req.body,as_nbr: req.body.pshnbr, as_effdate: new Date(),created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
         const cm = await customerServiceInstance.findOne({cm_addr: req.body.as_cust})
-        if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) + Number(req.body.as_amt)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
+        if(cm) await customerServiceInstance.update({cm_balance : Number(cm.cm_balance) - Number(req.body.as_amt) - Number(req.body.as_mrgn_amt)  , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: cm.id})
         const so = await saleOrderServiceInstance.findOne({so_nbr: req.body.as_ship})
-        if (Number(so.so__dec02) + Number(req.body.as_amt) >= Number(so.so__dec01) ) { 
-           await saleOrderServiceInstance.update({so__dec02 : Number(so.so__dec02) + Number(req.body.as_amt), so_stat : "C" , last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: so.id})
+        if (Number(so.so__dec02) + Number(req.body.as_amt) + Number(req.body.as_mrgn_amt) >= Number(so.so__dec01) ) { 
+           await saleOrderServiceInstance.update({so__dec02 : Number(so.so__dec02) + Number(req.body.as_amt) + Number(req.body.as_mrgn_amt), so_stat : "C" , so__qadd01: Number(so.so__qadd01)+ Number(req.body.as_mrgn_amt), last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: so.id})
         } else {
-            await saleOrderServiceInstance.update({so__dec02 : Number(so.so__dec02) + Number(req.body.as_amt), last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: so.id})
+            await saleOrderServiceInstance.update({so__dec02 : Number(so.so__dec02) + Number(req.body.as_amt) + Number(req.body.as_mrgn_amt), so__qadd01: Number(so.so__qadd01)+ Number(req.body.as_mrgn_amt),last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: so.id})
       
 
         }
         if(req.body.as_open){
-            console.log("herrrrrrrrrrrrrrrrrrrrrrrrrrrrr",req.body.as_ship)
+           // console.log("herrrrrrrrrrrrrrrrrrrrrrrrrrrrr",req.body.as_ship)
             const pen = await penicheServiceInstance.findOne({pen_nbr: req.body.as_ship})
             if (pen) await penicheServiceInstance.update({pen_used: false,pen_nbr: null, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin},{id: pen.id})
       
@@ -77,7 +78,52 @@ const createP = async (req: Request, res: Response, next: NextFunction) => {
     }
 }
 
-
+const findBywithadress = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    logger.debug("Calling find by  all account endpoint")
+   
+    try {
+        const accountShiperServiceInstance = Container.get(AccountShiperService)
+        const accountShipers = await accountShiperServiceInstance.findwithadress({...req.body})
+        
+        for (let as of accountShipers){
+            const effdate = new Date(as.as_effdate)   
+              as.as_effdate = effdate.getUTCFullYear() + "-" + (effdate.getUTCMonth() + 1) + "-" + effdate.getUTCDate();
+        }
+        
+        return res
+            .status(200)
+            .json({ message: "fetched succesfully", data: accountShipers })
+    } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
+const findBywithadressP = async (req: Request, res: Response, next: NextFunction) => {
+    const logger = Container.get("logger")
+    logger.debug("Calling find by  all account endpoint")
+   
+    try {
+        const accountShiperServiceInstance = Container.get(AccountShiperService)
+        const accountShipers = await accountShiperServiceInstance.findwithadress({
+            as_type: "P",
+            as_effdate: {[Op.between]: [req.body.date, req.body.date1],
+            }
+        })
+        
+        for (let as of accountShipers){
+            const effdate = new Date(as.as_effdate)   
+              as.as_effdate = effdate.getUTCFullYear() + "-" + (effdate.getUTCMonth() + 1) + "-" + effdate.getUTCDate();
+        }
+        
+        return res
+            .status(200)
+            .json({ message: "fetched succesfully", data: accountShipers })
+    } catch (e) {
+        logger.error("🔥 error: %o", e)
+        return next(e)
+    }
+}
 const findOne = async (req: Request, res: Response, next: NextFunction) => {
     const logger = Container.get("logger")
     logger.debug("Calling find one  account endpoint")
@@ -160,9 +206,11 @@ const deleteOne = async (req: Request, res: Response, next: NextFunction) => {
 export default {
     create,
     createP,
+    findBywithadress,
     findOne,
     findAll,
     findBy,
     update,
-    deleteOne
+    deleteOne,
+    findBywithadressP,
 }

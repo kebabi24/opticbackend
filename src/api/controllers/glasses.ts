@@ -274,6 +274,8 @@ console.log(req.body.obj)
                upc   :   gls.glass.gls_upc,
                price :   gls.glsd_sales_price,
               uprice :   gls.glsd_price,
+              rc     :   gls.glass.gls_batch,
+              indice :   gls.glass.gls_net_wt,
                  qty :   0,
                  sph :   A,
                  cyl :   B,

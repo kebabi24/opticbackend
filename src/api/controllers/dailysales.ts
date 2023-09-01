@@ -38,9 +38,12 @@ const createdirect = async (req: Request, res: Response, next: NextFunction) => 
         const costSimulationServiceInstance = Container.get(costSimulationService);
         const locationDetailServiceInstance = Container.get(locationAccessoireService);
         const inventoryTransactionServiceInstance = Container.get(inventoryTransactionService);
+        const accountShiperServiceInstance = Container.get(AccountShiperService)
         const itemServiceInstance = Container.get(AccessoireService);
         const { saleOrder, saleOrderDetail } = req.body
         const so = await saleOrderServiceInstance.create({...saleOrder,created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        const as = await accountShiperServiceInstance.create({as_cust:saleOrder.ds_cust,as_amt: saleOrder.ds__dec01, as_effdate: new Date(),as_ship: so.ds_nbr,as_curr: "DA",as_pay_method:"ES", as_type:"P",created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin})
+        
         for (let entry of saleOrderDetail) {
             entry = { ...entry, dsd_nbr: so.ds_nbr, created_by:user_code,created_ip_adr: req.headers.origin, last_modified_by:user_code,last_modified_ip_adr: req.headers.origin }
             await saleOrderAccessoireServiceInstance.create(entry)

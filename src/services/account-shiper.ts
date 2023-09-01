@@ -4,6 +4,7 @@ import { Service, Inject } from "typedi"
 export default class AccountShiperService {
     constructor(
         @Inject("accountShiperModel") private accountShiperModel: Models.accountShiperModel,
+        @Inject("addressModel") private addressModel: Models.AddressModel,
         @Inject("logger") private logger
     ) {}
 
@@ -12,6 +13,17 @@ export default class AccountShiperService {
             const accountShiper = await this.accountShiperModel.create({ ...data })
             this.logger.silly("accountShiper", accountShiper)
             return accountShiper
+        } catch (e) {
+            this.logger.error(e)
+            throw e
+        }
+    }
+    public async findwithadress(query: any): Promise<any> {
+        
+        try {
+            const accountShipers = await this.accountShiperModel.findAll({ where: query,include: this.addressModel, order : [['id', 'ASC']] })
+            this.logger.silly("find All Codes mstr")
+            return accountShipers
         } catch (e) {
             this.logger.error(e)
             throw e

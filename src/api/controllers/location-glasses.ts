@@ -46,6 +46,9 @@ const findAll = async (req: Request, res: Response, next: NextFunction) => {
         const locationGlassesServiceInstance = Container.get(LocationGlassesService)
         const locationGlassess = await locationGlassesServiceInstance.find({})
         //console.log(locationGlassess)
+        for(let ld of locationGlassess) {
+            ld.ldg__chr05 = ld.glass.gls_desc1
+        }
         return res
             .status(200)
             .json({ message: "fetched succesfully", data: locationGlassess })

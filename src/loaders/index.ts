@@ -228,8 +228,8 @@ export default async ({ expressApp }) => {
 
   require('../models/taxe').default.hasOne(require('../models/sale-shiper').default,{foreignKey: 'psh_tax_code',sourceKey: 'tx2_tax_code'})
   require('../models/sale-shiper').default.belongsTo(require('../models/taxe').default,{  foreignKey: 'psh_tax_code', targetKey: 'tx2_tax_code'})
-  require('../models/saleOrder').default.hasOne(require('../models/sale-shiper').default,{foreignKey: 'psh_so_nbr',sourceKey: 'so_nbr'})
-  require('../models/sale-shiper').default.belongsTo(require('../models/saleOrder').default,{  foreignKey: 'psh_so_nbr', targetKey: 'so_nbr'})
+  require('../models/saleorder').default.hasOne(require('../models/sale-shiper').default,{foreignKey: 'psh_so_nbr',sourceKey: 'so_nbr'})
+  require('../models/sale-shiper').default.belongsTo(require('../models/saleorder').default,{  foreignKey: 'psh_so_nbr', targetKey: 'so_nbr'})
 
 
   require('../models/address').default.hasOne(require('../models/bank').default,{foreignKey: 'bk_code',sourceKey: 'ad_addr'})
@@ -337,10 +337,14 @@ export default async ({ expressApp }) => {
   require('../models/accessoire').default.hasOne(require('../models/dailysales-accessoire').default,{foreignKey: 'dsd_part',sourceKey: 'acs_part'})
   require('../models/dailysales-accessoire').default.belongsTo(require('../models/accessoire').default,{  foreignKey: 'dsd_part', targetKey: 'acs_part'})
 
+  require('../models/user').default.hasOne(require('../models/saleorder').default,{foreignKey: 'created_by',sourceKey: 'usrd_code'})
+  require('../models/saleorder').default.belongsTo(require('../models/user').default,{  foreignKey: 'created_by', targetKey: 'usrd_code'})
+  require('../models/account-shiper').default.belongsTo(require('../models/address').default,{  foreignKey: 'as_cust', targetKey: 'ad_addr'})
+
 
   Logger.info('✌️ ADD MODEL ASSOCIATION');
   // sync models
-  //await sequelizeConnection.sync()
+  // await sequelizeConnection.sync()
   
    await sequelizeConnection.sync({alter:true}).then(()=>{
      console.log('database updated');
